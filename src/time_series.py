@@ -19,8 +19,8 @@ def load_data(filepath: Path) -> pd.DataFrame:
         FileNotFoundError: If the file does not exist.
         ValueError: If the 'Date' column is missing.
     """
-    if not filepath.exists():
-        raise FileNotFoundError(f"File not found: {filepath}")
+    # if not filepath.exists():
+    #     raise FileNotFoundError(f"File not found: {filepath}")
 
     df = pd.read_csv(filepath, parse_dates=["Date"])
 
