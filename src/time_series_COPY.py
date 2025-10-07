@@ -38,78 +38,76 @@ def load_data(filepath: Path) -> pd.DataFrame:
     return df
 
 
+# def generate_lags(
+#     past_lags: int,
+#     future_lags: int,
+# ) -> tuple[list, list]:
+
+#     # Past lags (y - p to y - 1)
+#     lags_past = [f"y-{past}" for past in range(past_lags, 0, -1)]
+
+#     # Future lags (y + 1 to y + f)
+#     lags_future = [f"y+{future}" for future in range(1, future_lags + 1)]
+
+#     # AR lags
+#     lags_ar = lags_past
+
+#     # ARP lags
+#     lags_btf = lags_past[(len(lags_past) // 2):] + lags_future
+
+#     return lags_ar, lags_btf
+
+
 def generate_lags(
-    n_lags_past: int,
-    n_lags_future: int,
-) -> tuple[list[str], list[str]]:
-    """
-    Generate lag names for AR and ARP models.
-
-    Args:
-        past_lags (int): Number of past lags (for both AR and ARP).
-        future_lags (int): Number of future lags (used only in ARP).
-
-    Returns:
-        tuple[list[str], list[str]]: A tuple containing:
-            - lags_ar: list of past lags for AR model (e.g., ['y-2', 'y-1'])
-            - lags_arp: list of lags for ARP model using second half of past lags + future lags
-                      (e.g., ['y-1', 'y+1', 'y+2'])
-    """
-    # Past lags (y-2, y-1, ..., y-1)
-    lags_past = [f"y-{i}" for i in range(n_lags_past, 0, -1)]
-
-    # Future lags (y+1, y+2, ..., y+f)
-    lags_future = [f"y+{i}" for i in range(1, n_lags_future + 1)]
-
-    # AR model uses all past lags
-    lags_ar = lags_past
-
-    # ARP model uses second half of past lags + all future lags
-    lags_arp = lags_past[len(lags_past) // 2:] + lags_future
-
-    return lags_ar, lags_arp
-
-
-def generate_lagged_df(
     series: Union[pd.Series, pd.DataFrame],
     past_lags: int,
     future_lags: int,
     dropna: bool = True,
 ) -> pd.DataFrame:
     """
-    Generate a lagged DataFrame with columns ordered:
-    [y - p, ..., y - 1, y, y + 1, ..., y + f].
+    Generate a lagged DataFrame from a univariate or multivariate time series.
 
-    Uses generate_lags() internally.
+    Parameters
+    ----------
+    series : pd.Series or pd.DataFrame
+        Input time series (indexed by datetime).
+    past_lags : int, default=1
+        Number of past lags to include (y - 1, ..., y - p).
+    future_lags : int, default=0
+        Number of future lags to include (y + 1, ..., y + f).
+    dropna : bool, default=False
+        Whether to drop rows with NaNs created by shifting.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with lagged values in the order:
+        [y - p, ..., y - 1, y, y + 1, ..., y + f]
     """
     if isinstance(series, pd.Series):
         series = series.to_frame()
 
-    # Get lag names
-    lags_ar, lags_arp = generate_lags(past_lags, future_lags)
-
-    # Build a single correct order (past once + y + future once)
-    past_lags_names = lags_ar  # all past lags
-    future_lags_names = [f"y+{i}" for i in range(1, future_lags + 1)]
-    ordered_lags = past_lags_names + ["y"] + future_lags_names
-
+    # List to hold all shifted DataFrames
     dfs = []
 
-    for lag_name in ordered_lags:
-        if lag_name == "y":
-            shifted = series.copy()
-        elif lag_name.startswith("y-"):
-            shift_val = int(lag_name.split("-")[1])
-            shifted = series.shift(shift_val)
-        elif lag_name.startswith("y+"):
-            shift_val = int(lag_name.split("+")[1])
-            shifted = series.shift(-shift_val)
-        else:
-            raise ValueError(f"Invalid lag name: {lag_name}")
+    # Past lags (y - p to y - 1)
+    for past in range(past_lags, 0, -1):
+        lagged = series.shift(past)
+        lagged.columns = [f"y-{past}" for _ in series.columns]
+        dfs.append(lagged)
 
-        shifted.columns = [lag_name for _ in series.columns]
-        dfs.append(shifted)
+    # Current y
+    current = series.copy()
+    current.columns = ["y" for _ in series.columns]
+    dfs.append(current)
 
+    # Future lags (y + 1 to y + f)
+    for future in range(1, future_lags + 1):
+        lead = series.shift(-future)
+        lead.columns = [f"y+{future}" for _ in series.columns]
+        dfs.append(lead)
+
+    # Concatenate all
     df = pd.concat(dfs, axis=1)
 
     return df.dropna() if dropna else df
