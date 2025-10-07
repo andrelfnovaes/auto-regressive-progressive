@@ -3,12 +3,13 @@
 import numpy as np
 import pandas as pd
 
-from typing import Union, Optional, List, Type
+from typing import Union, Optional, List, Type, Tuple
 from pathlib import Path
 
 from sklearn.base import BaseEstimator
-from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_percentage_error
+
+from sklearn.linear_model import LinearRegression
 
 
 def load_data(filepath: Path) -> pd.DataFrame:
@@ -67,13 +68,13 @@ def generate_lags(
     # ARP model uses second half of past lags + all future lags
     lags_arp = lags_past[len(lags_past) // 2:] + lags_future
 
-    return lags_ar, lags_arp
+    return lags_past, lags_future, lags_ar, lags_arp
 
 
 def generate_lagged_df(
     series: Union[pd.Series, pd.DataFrame],
-    past_lags: int,
-    future_lags: int,
+    n_lags_past: int,
+    n_lags_future: int,
     dropna: bool = True,
 ) -> pd.DataFrame:
     """
@@ -86,12 +87,10 @@ def generate_lagged_df(
         series = series.to_frame()
 
     # Get lag names
-    lags_ar, lags_arp = generate_lags(past_lags, future_lags)
+    lags_past, lags_future, lags_ar, lags_arp = generate_lags(n_lags_past, n_lags_future)
 
     # Build a single correct order (past once + y + future once)
-    past_lags_names = lags_ar  # all past lags
-    future_lags_names = [f"y+{i}" for i in range(1, future_lags + 1)]
-    ordered_lags = past_lags_names + ["y"] + future_lags_names
+    ordered_lags = lags_ar + ["y"] + lags_future
 
     dfs = []
 
@@ -115,45 +114,104 @@ def generate_lagged_df(
     return df.dropna() if dropna else df
 
 
-def fit_model_from_lagged(
+def split_df(
     df: pd.DataFrame,
-    lags: List[str],
-    model_class: Type[BaseEstimator],
-    **model_kwargs
-) -> tuple[BaseEstimator, float]:
+    train_test_ratio: float
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Fit a scikit-learn-like model using lagged features to predict the 'y' column,
-    and evaluate it using Mean Absolute Percentage Error (MAPE).
+    Split a DataFrame into training and testing sets based on the row count.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the 'y' column and lag/lead features.
-        lags (List[str]): List of column names to be used as input features.
+        df (pd.DataFrame): The DataFrame to split (e.g., lagged features).
+        train_test_ratio (float): Proportion of data to use for training (e.g., 0.8).
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame]: (df_train, df_test)
+    """
+    if not 0 < train_test_ratio < 1:
+        raise ValueError("train_test_ratio must be between 0 and 1 (exclusive).")
+
+    split_idx = int(len(df) * train_test_ratio)
+    df_train = df.iloc[:split_idx].copy()
+    df_test = df.iloc[split_idx:].copy()
+
+    return df_train, df_test
+
+
+def fit_model(
+    df: pd.DataFrame,
+    features: List[str],
+    model_class: Type[BaseEstimator],
+    **model_kwargs
+) -> BaseEstimator:
+    """
+    Fit a scikit-learn-like model using selected features to predict the 'y' column.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the 'y' column and feature columns.
+        features (List[str]): List of column names to be used as input features.
         model_class (Type[BaseEstimator]): A scikit-learn-compatible model class.
         **model_kwargs: Additional keyword arguments passed to the model constructor.
 
     Returns:
-        tuple[BaseEstimator, float]: A fitted model instance and its MAPE on training data.
+        BaseEstimator: A fitted model instance.
 
     Raises:
-        ValueError: If 'y' column or any lag feature is missing in the DataFrame.
+        ValueError: If 'y' column or any feature column is missing in the DataFrame.
     """
     if 'y' not in df.columns:
         raise ValueError("The DataFrame must contain a 'y' column as target.")
 
-    missing_lags = [lag for lag in lags if lag not in df.columns]
-    if missing_lags:
-        raise ValueError(f"The following lag columns are missing: {missing_lags}")
+    missing_features = [f for f in features if f not in df.columns]
+    if missing_features:
+        raise ValueError(f"The following feature columns are missing: {missing_features}")
 
-    X = df[lags].copy().values
+    X = df[features].copy().values
     y = df['y'].copy().values
 
     model = model_class(**model_kwargs)
     model.fit(X, y)
 
-    y_pred = model.predict(X)
-    mape = mean_absolute_percentage_error(y, y_pred)
+    return model
 
-    return model, mape
+
+def predict_evaluate_model(
+    model: BaseEstimator,
+    df: pd.DataFrame,
+    features: List[str]
+) -> Tuple[pd.Series, float]:
+    """
+    Use a fitted model to predict and evaluate MAPE on new data.
+
+    Args:
+        model (BaseEstimator): A fitted scikit-learn-like model.
+        df (pd.DataFrame): DataFrame containing 'y' and feature columns.
+        features (List[str]): List of column names used as model inputs.
+
+    Returns:
+        Tuple[pd.Series, float]: Tuple containing:
+            - pd.Series of predictions (same index as df)
+            - float: MAPE score
+
+    Raises:
+        ValueError: If required columns are missing in the DataFrame.
+    """
+    if 'y' not in df.columns:
+        raise ValueError("The DataFrame must contain a 'y' column as target.")
+
+    missing_features = [f for f in features if f not in df.columns]
+    if missing_features:
+        raise ValueError(f"The following feature columns are missing: {missing_features}")
+
+    X = df[features].copy()
+    y_true = df['y'].copy()
+
+    y_pred = pd.Series(model.predict(X), index=df.index, name='y_pred')
+
+    mape = mean_absolute_percentage_error(y_true, y_pred)
+
+    return y_pred, mape
+
 
 
 
