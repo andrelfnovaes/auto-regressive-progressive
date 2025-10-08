@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from typing import Union, Optional, List, Type, Tuple
 from pathlib import Path
@@ -26,8 +27,6 @@ def load_data(filepath: Path) -> pd.DataFrame:
         FileNotFoundError: If the file does not exist.
         ValueError: If the 'Date' column is missing.
     """
-    # if not filepath.exists():
-    #     raise FileNotFoundError(f"File not found: {filepath}")
 
     df = pd.read_csv(filepath, parse_dates=["Date"])
 
@@ -212,6 +211,118 @@ def predict_evaluate_model(
 
     return y_pred, mape
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def plot_forecast_vs_actual(
+    df_train: pd.DataFrame,
+    df_test: pd.DataFrame,
+    y_pred: pd.Series,
+    title: str = "Forecast vs Actual"
+) -> None:
+    """
+    Plot training and testing actual values alongside test predictions.
+
+    Args:
+        df_train (pd.DataFrame): Training set with 'y' column.
+        df_test (pd.DataFrame): Testing set with 'y' column.
+        y_pred (pd.Series): Predictions on the test set (must align with df_test index).
+        title (str): Plot title.
+    """
+    plt.figure(figsize=(12, 6))
+
+    # Plot actual values
+    plt.plot(df_train.index, df_train['y'], label='Train Actual', color='blue', linestyle='-')
+    plt.plot(df_test.index, df_test['y'], label='Test Actual', color='black', linestyle='--')
+
+    # Plot predicted values
+    plt.plot(y_pred.index, y_pred, label='Test Predicted', color='orange', linestyle='--', marker='o')
+
+    plt.title(title)
+    plt.xlabel("Time")
+    plt.ylabel("y")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_train_test_predictions(
+    df_train: pd.DataFrame,
+    df_test: pd.DataFrame,
+    y_pred_train: pd.Series,
+    y_pred_test: pd.Series,
+    title: str = "Train/Test Forecast vs Actual"
+) -> None:
+    """
+    Plot actual vs predicted values for both train and test sets in separate subplots.
+
+    Args:
+        df_train (pd.DataFrame): Training set with 'y' column.
+        df_test (pd.DataFrame): Testing set with 'y' column.
+        y_pred_train (pd.Series): Predictions on the training set.
+        y_pred_test (pd.Series): Predictions on the testing set.
+        title (str): Main title of the plot.
+    """
+    fig, axs = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+
+    # --- Train Plot ---
+    axs[0].plot(df_train.index, df_train['y'], label='Train Actual', color='black')
+    axs[0].plot(y_pred_train.index, y_pred_train, label='Train Predicted', color='orange', linestyle='--', marker='o')
+    axs[0].set_title("Training Set")
+    axs[0].set_ylabel("y")
+    axs[0].legend()
+    axs[0].grid(True)
+
+    # --- Test Plot ---
+    axs[1].plot(df_test.index, df_test['y'], label='Test Actual', color='black')
+    axs[1].plot(y_pred_test.index, y_pred_test, label='Test Predicted', color='orange', linestyle='--', marker='o')
+    axs[1].set_title("Testing Set")
+    axs[1].set_xlabel("Time")
+    axs[1].set_ylabel("y")
+    axs[1].legend()
+    axs[1].grid(True)
+
+    # --- Layout ---
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
 
 
 
