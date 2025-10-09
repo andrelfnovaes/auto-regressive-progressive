@@ -212,9 +212,93 @@ def predict_evaluate_model(
     return y_pred, mape
 
 
+def run_tsf_experiment(
+    series: Union[pd.Series, pd.DataFrame],
+    n_lags_past: int,
+    n_lags_future: int,
+    features: list,
+    model_class: Type[BaseEstimator],
+    train_test_ratio: float = 0.8,
+    dropna: bool = True,
+    **model_kwargs
+) -> dict:
+    """
+    Run a full time series forecasting experiment using past and future lags.
 
+    This includes:
+        - Lag generation
+        - Dataframe transformation
+        - Train/test split
+        - Model fitting
+        - Prediction and MAPE evaluation
 
+    Args:
+        series (pd.Series or pd.DataFrame): Input time series.
+        n_lags_past (int): Number of past lags to include.
+        n_lags_future (int): Number of future lags to include.
+        model_class (Type[BaseEstimator]): A scikit-learn-like model class.
+        train_test_ratio (float): Ratio of train size to full dataset (default 0.8).
+        dropna (bool): Whether to drop rows with NaNs in the lagged dataframe.
+        **model_kwargs: Keyword arguments passed to the model constructor.
 
+    Returns:
+        dict: Dictionary with:
+            - model: fitted model
+            - y_pred: test predictions
+            - mape: MAPE on test
+            - df_train: training dataframe
+            - df_test: testing dataframe
+    """
+    # 1. Generate lag names
+    lags_past, lags_future, lags_ar, lags_arp = generate_lags(n_lags_past=2*n_lags_future,
+                                                          n_lags_future=n_lags_future
+                                                          )
+
+    # 2. Create lagged dataset
+    df_lagged = generate_lagged_df(
+        series=y,
+        n_lags_past=2*n_lags_future,
+        n_lags_future=n_lags_future,
+    )
+
+    # 3. Split into train/test sets
+    df_train, df_test = split_df(
+        df=df_lagged,
+        train_test_ratio=train_test_ratio
+    )
+
+    # 4. Fit model on training set using ARP lags (second-half past + future)
+    model = fit_model(
+        df=df_train,
+        features=features,
+        model_class=model_class,
+        **model_kwargs
+    )
+
+    # 5. Predict and evaluate on training set
+    y_pred_train, mape_train = predict_evaluate_model(
+        model=model,
+        df=df_train,
+        features=features
+    )
+
+    # 5. Predict and evaluate on testing set
+    y_pred_test, mape_test = predict_evaluate_model(
+        model=model,
+        df=df_test,
+        features=features
+    )
+
+    # 6. Return results
+    return {
+        "model": model,
+        "df_train": df_train,
+        "df_test": df_test,
+        "y_pred_train": y_pred_train,
+        "y_pred_test": y_pred_test,
+        "mape_train": mape_train,
+        "mape_test": mape_test,
+    }
 
 
 
@@ -323,24 +407,6 @@ def plot_train_test_predictions(
     fig.suptitle(title, fontsize=14)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
