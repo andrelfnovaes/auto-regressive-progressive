@@ -202,8 +202,8 @@ def predict_evaluate_model(
     if missing_features:
         raise ValueError(f"The following feature columns are missing: {missing_features}")
 
-    X = df[features].copy()
-    y_true = df['y'].copy()
+    X = df[features].copy().values
+    y_true = df['y'].copy().values
 
     y_pred = pd.Series(model.predict(X), index=df.index, name='y_pred')
 
@@ -212,94 +212,44 @@ def predict_evaluate_model(
     return y_pred, mape
 
 
-def run_tsf_experiment(
-    series: Union[pd.Series, pd.DataFrame],
-    n_lags_past: int,
-    n_lags_future: int,
-    features: list,
+def evaluate_methodology(
+    df_train: pd.DataFrame,
+    df_test: pd.DataFrame,
+    features_train: List[str],
+    features_test: List[str],
     model_class: Type[BaseEstimator],
-    train_test_ratio: float = 0.8,
-    dropna: bool = True,
     **model_kwargs
-) -> dict:
+) -> tuple[pd.Series, float, pd.Series, float]:
     """
-    Run a full time series forecasting experiment using past and future lags.
-
-    This includes:
-        - Lag generation
-        - Dataframe transformation
-        - Train/test split
-        - Model fitting
-        - Prediction and MAPE evaluation
+    Train a model on df_train and evaluate it on both train and test sets using MAPE.
 
     Args:
-        series (pd.Series or pd.DataFrame): Input time series.
-        n_lags_past (int): Number of past lags to include.
-        n_lags_future (int): Number of future lags to include.
-        model_class (Type[BaseEstimator]): A scikit-learn-like model class.
-        train_test_ratio (float): Ratio of train size to full dataset (default 0.8).
-        dropna (bool): Whether to drop rows with NaNs in the lagged dataframe.
-        **model_kwargs: Keyword arguments passed to the model constructor.
+        df_train (pd.DataFrame): Training data with 'y' and feature columns.
+        df_test (pd.DataFrame): Testing data with 'y' and feature columns.
+        features (List[str]): List of lag feature names.
+        model_class (Type[BaseEstimator]): Model class (e.g. LinearRegression).
+        **model_kwargs: Optional parameters for model initialization.
 
     Returns:
-        dict: Dictionary with:
-            - model: fitted model
-            - y_pred: test predictions
-            - mape: MAPE on test
-            - df_train: training dataframe
-            - df_test: testing dataframe
+        Tuple containing:
+            - y_pred_train (pd.Series): Predictions on train set.
+            - mape_train (float): MAPE on train set.
+            - y_pred_test (pd.Series): Predictions on test set.
+            - mape_test (float): MAPE on test set.
     """
-    # 1. Generate lag names
-    lags_past, lags_future, lags_ar, lags_arp = generate_lags(n_lags_past=2*n_lags_future,
-                                                          n_lags_future=n_lags_future
-                                                          )
-
-    # 2. Create lagged dataset
-    df_lagged = generate_lagged_df(
-        series=y,
-        n_lags_past=2*n_lags_future,
-        n_lags_future=n_lags_future,
-    )
-
-    # 3. Split into train/test sets
-    df_train, df_test = split_df(
-        df=df_lagged,
-        train_test_ratio=train_test_ratio
-    )
-
-    # 4. Fit model on training set using ARP lags (second-half past + future)
+    # Fit model on training set
     model = fit_model(
         df=df_train,
-        features=features,
+        features=features_train,
         model_class=model_class,
         **model_kwargs
     )
 
-    # 5. Predict and evaluate on training set
-    y_pred_train, mape_train = predict_evaluate_model(
-        model=model,
-        df=df_train,
-        features=features
-    )
+    # Predict + evaluate on both train and test sets
+    y_pred_train, mape_train = predict_evaluate_model(model, df_train, features_train)
+    y_pred_test, mape_test = predict_evaluate_model(model, df_test, features_test)
 
-    # 5. Predict and evaluate on testing set
-    y_pred_test, mape_test = predict_evaluate_model(
-        model=model,
-        df=df_test,
-        features=features
-    )
-
-    # 6. Return results
-    return {
-        "model": model,
-        "df_train": df_train,
-        "df_test": df_test,
-        "y_pred_train": y_pred_train,
-        "y_pred_test": y_pred_test,
-        "mape_train": mape_train,
-        "mape_test": mape_test,
-    }
-
+    return y_pred_train, y_pred_test, mape_train, mape_test
 
 
 
