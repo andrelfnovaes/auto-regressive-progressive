@@ -1,11 +1,17 @@
 # Imports
 
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from typing import Union, Optional, List, Type, Tuple
+# Set random
+random.seed(42)
+np.random.seed(42)
+
 from pathlib import Path
+from typing import Union, Optional, List, Type, Tuple, Dict
+from collections import defaultdict
 
 from sklearn.base import BaseEstimator
 from sklearn.metrics import mean_absolute_percentage_error
@@ -250,6 +256,57 @@ def evaluate_methodology(
     y_pred_test, mape_test = predict_evaluate_model(model, df_test, features_test)
 
     return y_pred_train, y_pred_test, mape_train, mape_test
+
+
+def count_lower_mape(
+    results: List[dict],
+    model_class: Type
+) -> Dict[int, dict]:
+    """
+    Count how often the ARP model performs better than the AR model
+    in terms of MAPE on both training and testing sets, grouped by n_lags_future.
+
+    Parameters
+    ----------
+    results : list of dict
+        List containing experiment result dictionaries.
+    model_class : type
+        The model class to filter results (e.g., LinearRegression).
+
+    Returns
+    -------
+    dict
+        Dictionary where keys are n_lags_future and values are dictionaries with:
+            - train_count
+            - test_count
+            - train_pct
+            - test_pct
+            - total
+    """
+    grouped_results = defaultdict(list)
+
+    # Filter and group results by n_lags_future
+    for result in results:
+        if result["model_class"] == model_class.__name__:
+            grouped_results[result["n_lags_future"]].append(result)
+
+    output = {}
+
+    for n_lags_future, group in grouped_results.items():
+        total = len(group)
+        train_better = sum(r["mape_train_arp"] < r["mape_train_ar"] for r in group)
+        test_better = sum(r["mape_test_arp"] < r["mape_test_ar"] for r in group)
+
+        output[n_lags_future] = {
+            "total": total,
+            "train_count": train_better,
+            "test_count": test_better,
+            "train_pct": 100 * train_better / total if total else 0.0,
+            "test_pct": 100 * test_better / total if total else 0.0,
+        }
+
+    return output
+
 
 
 
