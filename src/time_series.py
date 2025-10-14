@@ -13,7 +13,7 @@ random.seed(42)
 np.random.seed(42)
 
 from pathlib import Path
-from typing import Union, Optional, List, Type, Tuple, Dict
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 from collections import defaultdict
 
 from sklearn.base import BaseEstimator
@@ -346,6 +346,32 @@ def save_results_run(
         pickle.dump(results_run, f)
 
 
+def load_results_run(
+    folder: str,
+    file_name: str
+) -> List[Dict[str, Any]]:
+    """
+    Load a pickled results_run file from a specified folder and file name.
+
+    Parameters
+    ----------
+    folder : str
+        Path to the folder containing the pickle file.
+    file_name : str
+        Name of the pickle file (e.g., 'LinearRegression_1_5_.pkl').
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        List of dictionaries containing experiment results.
+    """
+    filepath = os.path.join(folder, file_name)
+
+    with open(filepath, "rb") as f:
+        results_run = pickle.load(f)
+
+    print(f"Loaded {len(results_run)} experiments from '{file_name}'")
+    return results_run
 
 
 
