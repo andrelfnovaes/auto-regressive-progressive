@@ -1,5 +1,8 @@
 # Imports
 
+import os
+import pickle
+
 import random
 import numpy as np
 import pandas as pd
@@ -261,52 +264,86 @@ def evaluate_methodology(
 def count_lower_mape(
     results: List[dict],
     model_class: Type
-) -> Dict[int, dict]:
+) -> pd.DataFrame:
     """
-    Count how often the ARP model performs better than the AR model
-    in terms of MAPE on both training and testing sets, grouped by n_lags_future.
+    Count how often ARP outperforms AR on MAPE (train/test),
+    grouped by n_lags_future. Returns a DataFrame.
 
     Parameters
     ----------
     results : list of dict
-        List containing experiment result dictionaries.
+        List of experiment result dictionaries.
     model_class : type
-        The model class to filter results (e.g., LinearRegression).
+        Model class to filter by (e.g., LinearRegression)
 
     Returns
     -------
-    dict
-        Dictionary where keys are n_lags_future and values are dictionaries with:
-            - train_count
-            - test_count
-            - train_pct
-            - test_pct
-            - total
+    pd.DataFrame
+        Summary DataFrame with counts and percentages.
     """
     grouped_results = defaultdict(list)
 
-    # Filter and group results by n_lags_future
+    # Filter results by model class and group by n_lags_future
     for result in results:
         if result["model_class"] == model_class.__name__:
             grouped_results[result["n_lags_future"]].append(result)
 
-    output = {}
+    summary = []
 
-    for n_lags_future, group in grouped_results.items():
+    for n_lags_future, group in sorted(grouped_results.items()):
         total = len(group)
-        train_better = sum(r["mape_train_arp"] < r["mape_train_ar"] for r in group)
-        test_better = sum(r["mape_test_arp"] < r["mape_test_ar"] for r in group)
+        train_count = sum(r["mape_train_arp"] < r["mape_train_ar"] for r in group)
+        test_count = sum(r["mape_test_arp"] < r["mape_test_ar"] for r in group)
 
-        output[n_lags_future] = {
-            "total": total,
-            "train_count": train_better,
-            "test_count": test_better,
-            "train_pct": 100 * train_better / total if total else 0.0,
-            "test_pct": 100 * test_better / total if total else 0.0,
-        }
+        train_pct = 100 * train_count / total if total else 0.0
+        test_pct = 100 * test_count / total if total else 0.0
 
-    return output
+        summary.append({
+            "n_lags_future": n_lags_future,
+            "train_count": train_count,
+            "train_pct": train_pct,
+            "test_count": test_count,
+            "test_pct": test_pct,
+        })
 
+    df_summary = pd.DataFrame(summary)
+    return df_summary.set_index("n_lags_future")
+
+
+def save_results_run(
+    results_run: list,
+    model_class_name: str,
+    p_first: int,
+    p_last: int,
+    folder: str = "results"
+) -> None:
+    """
+    Save results_run list to a pickle file in the given folder,
+    with filename: {model_class_name}_{p_first}_{p_last}_.pkl
+
+    Parameters
+    ----------
+    results_run : list
+        List of dictionaries containing experiment results.
+    model_class_name : str
+        Name of the model class used in the experiment.
+    p_first : int
+        First value of n_lags_future used in the experiment.
+    p_last : int
+        Last value of n_lags_future used in the experiment.
+    folder : str, default='results'
+        Folder to save the pickle file.
+    """
+    # Ensure the folder exists
+    os.makedirs(folder, exist_ok=True)
+
+    # Define filename and path
+    filename = f"{model_class_name}_{p_first}_{p_last}_.pkl"
+    filepath = os.path.join(folder, filename)
+
+    # Save to pickle file
+    with open(filepath, "wb") as f:
+        pickle.dump(results_run, f)
 
 
 
