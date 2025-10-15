@@ -312,18 +312,8 @@ def count_lower_mape(
 
 def plot_distributions(results_run, model_class, n_lags_future_range, set_type='train'):
     """
-    Plot the distributions of MAPEs of AR(2r) vs ARP(r,p) models for each n_lags_future (r = n_lags_future).
-
-    Parameters
-    ----------
-    results_run : list
-        List of dictionaries containing experiment results.
-    model_class : str
-        Model class name to filter results, e.g., "LinearRegression".
-    n_lags_future_range : range
-        Range of n_lags_future values to include in the plots.
-    set_type : str
-        Either "train" or "test", indicating which MAPEs to compare.
+    Plot the distributions of MAPEs of AR(2r) vs ARP(r,p) models for each n_lags_future (r = n_lags_future),
+    with values converted to percentage.
     """
 
     assert set_type in ['train', 'test'], "set_type must be 'train' or 'test'"
@@ -338,9 +328,9 @@ def plot_distributions(results_run, model_class, n_lags_future_range, set_type='
         if not filtered:
             continue
 
-        # Extract MAPEs
-        mape_ar = [res[f"mape_{set_type}_ar"] for res in filtered]
-        mape_arp = [res[f"mape_{set_type}_arp"] for res in filtered]
+        # Extract MAPEs and multiply by 100 for percentage
+        mape_ar = [res[f"mape_{set_type}_ar"] * 100 for res in filtered]
+        mape_arp = [res[f"mape_{set_type}_arp"] * 100 for res in filtered]
 
         # Compute means and medians
         mean_ar = np.mean(mape_ar)
@@ -356,19 +346,101 @@ def plot_distributions(results_run, model_class, n_lags_future_range, set_type='
         plt.hist(mape_ar, bins=n_bins, alpha=0.6, label=f"AR({2 * n_lags_future}) models", color="tab:blue")
         plt.hist(mape_arp, bins=n_bins, alpha=0.6, label=f"ARP({n_lags_future},{n_lags_future}) models", color="tab:orange")
 
-        plt.axvline(mean_ar, color="blue", linestyle="--", linewidth=2.0, label=f"AR({2 * n_lags_future}) models Mean = {mean_ar:.2f}")
-        plt.axvline(mean_arp, color="orange", linestyle="--", linewidth=2.0, label=f"ARP({n_lags_future},{n_lags_future}) models Mean = {mean_arp:.2f}")
+        plt.axvline(mean_ar, color="blue", linestyle="--", linewidth=2.0, label=f"AR({2 * n_lags_future}) models Mean = {mean_ar:.2f}%")
+        plt.axvline(mean_arp, color="orange", linestyle="--", linewidth=2.0, label=f"ARP({n_lags_future},{n_lags_future}) models Mean = {mean_arp:.2f}%")
 
-        plt.axvline(median_ar, color="blue", linestyle="-", linewidth=2.0, label=f"AR({2 * n_lags_future}) models Median = {median_ar:.2f}")
-        plt.axvline(median_arp, color="orange", linestyle="-", linewidth=2.0, label=f"ARP({n_lags_future},{n_lags_future}) models Median = {median_arp:.2f}")
+        plt.axvline(median_ar, color="blue", linestyle="-", linewidth=2.0, label=f"AR({2 * n_lags_future}) models Median = {median_ar:.2f}%")
+        plt.axvline(median_arp, color="orange", linestyle="-", linewidth=2.0, label=f"ARP({n_lags_future},{n_lags_future}) models Median = {median_arp:.2f}%")
 
         plt.title(f"Distributions of MAPEs of AR({2 * n_lags_future}) models and ARP({n_lags_future},{n_lags_future}) models on {set_type.capitalize()} data")
-        plt.xlabel("MAPEs Values")
+        plt.xlabel("MAPEs Values (%)")  # Only updated to indicate values are percentages
         plt.ylabel("Frequency")
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
+
+from scipy.stats import mannwhitneyu, kruskal, wilcoxon
+
+def hypothesis_tests_per_p(results_run: list, model_class, n_lags_future_range: range, alpha: float = 0.05) -> dict:
+    """
+    Perform hypothesis tests comparing AR(2r) vs ARP(r,r) for each n_lags_future.
+
+    Parameters
+    ----------
+    results_run : list
+        List of dictionaries with experimental results.
+    model_class : type
+        Model class (e.g., LinearRegression).
+    n_lags_future_range : range
+        Range of future lags (r) to analyze.
+    alpha : float, optional
+        Significance level (default 0.05).
+
+    Returns
+    -------
+    dict of dict
+        Nested dict with keys being n_lags_future, containing:
+        {
+            "MAPE_train": pd.DataFrame,
+            "MAPE_test": pd.DataFrame,
+        }
+    """
+    model_class_name = model_class.__name__
+    output = {}
+
+    def _run_three_tests(past, btf) -> pd.DataFrame:
+        rows = []
+
+        # Mann-Whitney U Test
+        u_stat, u_p = mannwhitneyu(past, btf, alternative="two-sided")
+        rows.append(("Mann-Whitney U Test", u_stat, u_p))
+
+        # Kruskal-Wallis H Test
+        h_stat, h_p = kruskal(past, btf)
+        rows.append(("Kruskal-Wallis H Test", h_stat, h_p))
+
+        # Wilcoxon Signed-Rank Test
+        try:
+            w_stat, w_p = wilcoxon(past, btf, zero_method="wilcox", alternative="two-sided")
+        except ValueError:
+            w_stat, w_p = np.nan, 1.0
+        rows.append(("Wilcoxon Signed-Rank Test", w_stat, w_p))
+
+        df = pd.DataFrame(rows, columns=["Test", "Statistic", "P Value"])
+        df["Decision"] = np.where(df["P Value"] < alpha, "Reject H0", "Fail to Reject H0")
+        return df
+
+    for p in n_lags_future_range:
+        filtered = [
+            res for res in results_run
+            if res["model_class"] == model_class_name and res["n_lags_future"] == p
+        ]
+
+        if not filtered:
+            continue
+
+        past_train = np.array([res["mape_train_ar"] for res in filtered])
+        btf_train  = np.array([res["mape_train_arp"] for res in filtered])
+        past_test  = np.array([res["mape_test_ar"] for res in filtered])
+        btf_test   = np.array([res["mape_test_arp"] for res in filtered])
+
+        output[p] = {
+            "MAPE_train": _run_three_tests(past_train, btf_train),
+            "MAPE_test":  _run_three_tests(past_test,  btf_test),
+        }
+
+    return output
+
+
+
+
+
+
+
+
+
 
 
 
@@ -523,14 +595,6 @@ def plot_train_test_predictions(
     fig.suptitle(title, fontsize=14)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
-
-
-
-
-
-
-
-
 
 
 
