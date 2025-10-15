@@ -310,6 +310,82 @@ def count_lower_mape(
     return df_summary.set_index("n_lags_future")
 
 
+def plot_distributions(results_run, model_class, n_lags_future_range, set_type='train'):
+    """
+    Plot the distributions of MAPEs of AR(2r) vs ARP(r,p) models for each n_lags_future (r = n_lags_future).
+
+    Parameters
+    ----------
+    results_run : list
+        List of dictionaries containing experiment results.
+    model_class : str
+        Model class name to filter results, e.g., "LinearRegression".
+    n_lags_future_range : range
+        Range of n_lags_future values to include in the plots.
+    set_type : str
+        Either "train" or "test", indicating which MAPEs to compare.
+    """
+
+    assert set_type in ['train', 'test'], "set_type must be 'train' or 'test'"
+
+    for n_lags_future in n_lags_future_range:
+        # Filter relevant results
+        filtered = [
+            res for res in results_run
+            if res['model_class'] == model_class and res['n_lags_future'] == n_lags_future
+        ]
+
+        if not filtered:
+            continue
+
+        # Extract MAPEs
+        mape_ar = [res[f"mape_{set_type}_ar"] for res in filtered]
+        mape_arp = [res[f"mape_{set_type}_arp"] for res in filtered]
+
+        # Compute means and medians
+        mean_ar = np.mean(mape_ar)
+        mean_arp = np.mean(mape_arp)
+        median_ar = np.median(mape_ar)
+        median_arp = np.median(mape_arp)
+
+        n_bins = 15
+
+        # Plot
+        plt.figure(figsize=(10, 5))
+
+        plt.hist(mape_ar, bins=n_bins, alpha=0.6, label=f"AR({2 * n_lags_future}) models", color="tab:blue")
+        plt.hist(mape_arp, bins=n_bins, alpha=0.6, label=f"ARP({n_lags_future},{n_lags_future}) models", color="tab:orange")
+
+        plt.axvline(mean_ar, color="blue", linestyle="--", linewidth=2.0, label=f"AR({2 * n_lags_future}) models Mean = {mean_ar:.2f}")
+        plt.axvline(mean_arp, color="orange", linestyle="--", linewidth=2.0, label=f"ARP({n_lags_future},{n_lags_future}) models Mean = {mean_arp:.2f}")
+
+        plt.axvline(median_ar, color="blue", linestyle="-", linewidth=2.0, label=f"AR({2 * n_lags_future}) models Median = {median_ar:.2f}")
+        plt.axvline(median_arp, color="orange", linestyle="-", linewidth=2.0, label=f"ARP({n_lags_future},{n_lags_future}) models Median = {median_arp:.2f}")
+
+        plt.title(f"Distributions of MAPEs of AR({2 * n_lags_future}) models and ARP({n_lags_future},{n_lags_future}) models on {set_type.capitalize()} data")
+        plt.xlabel("MAPEs Values")
+        plt.ylabel("Frequency")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def save_results_run(
     results_run: list,
     model_class_name: str,
@@ -372,36 +448,6 @@ def load_results_run(
 
     print(f"Loaded {len(results_run)} experiments from '{file_name}'")
     return results_run
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def plot_forecast_vs_actual(
