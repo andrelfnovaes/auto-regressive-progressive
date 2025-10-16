@@ -21,6 +21,8 @@ from sklearn.metrics import mean_absolute_percentage_error
 
 from sklearn.linear_model import LinearRegression
 
+from scipy.stats import mannwhitneyu, kruskal, wilcoxon
+
 
 def load_data(filepath: Path) -> pd.DataFrame:
     """
@@ -361,9 +363,7 @@ def plot_distributions(results_run, model_class, n_lags_future_range, set_type='
         plt.show()
 
 
-from scipy.stats import mannwhitneyu, kruskal, wilcoxon
-
-def hypothesis_tests_per_p(results_run: list, model_class, n_lags_future_range: range, alpha: float = 0.05) -> dict:
+def hypothesis_tests(results_run: list, model_class, n_lags_future_range: range, alpha: float = 0.05) -> dict:
     """
     Perform hypothesis tests comparing AR(2r) vs ARP(r,r) for each n_lags_future.
 
@@ -408,7 +408,7 @@ def hypothesis_tests_per_p(results_run: list, model_class, n_lags_future_range: 
             w_stat, w_p = np.nan, 1.0
         rows.append(("Wilcoxon Signed-Rank Test", w_stat, w_p))
 
-        df = pd.DataFrame(rows, columns=["Test", "Statistic", "P Value"])
+        df = pd.DataFrame(rows, columns=["Hypothesis Test", "Statistic", "P Value"])
         df["Decision"] = np.where(df["P Value"] < alpha, "Reject H0", "Fail to Reject H0")
         return df
 
@@ -432,6 +432,42 @@ def hypothesis_tests_per_p(results_run: list, model_class, n_lags_future_range: 
         }
 
     return output
+
+
+def percentual_lower_mape_on_set(results_count):
+    """
+    Plot the percentage of times ARP(r,p) outperforms AR(2r) on both
+    training and test sets as a function of future lag (p).
+
+    Parameters
+    ----------
+    results_count : pd.DataFrame
+        DataFrame indexed by n_lags_future, with columns 'train_pct' and 'test_pct'
+        indicating the percentage of times ARP outperformed AR in each set.
+    """
+    # Extract values
+    future_lags = results_count.index
+    pct_train = results_count["train_pct"]
+    pct_test = results_count["test_pct"]
+
+    # Plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(future_lags, pct_train, marker='o', linestyle='-', color='#FFA500', label='Train Set')
+    plt.plot(future_lags, pct_test, marker='o', linestyle='-', color='#FF8C00', label='Test Set')
+
+    # Labels and captions
+    plt.title("Percentage of Times ARP(r,p) Outperforms AR(2r)", fontsize=14)
+    plt.xlabel("Future Lag (p)", fontsize=12)
+    plt.ylabel("Percentage (%)", fontsize=12)
+
+    # Y-axis and grid
+    plt.ylim(50, 100)
+    plt.grid(True, which='both', linestyle='--', color='gray', linewidth=0.6)
+    plt.xticks(future_lags)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 
 
 
