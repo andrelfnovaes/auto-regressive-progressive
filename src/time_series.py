@@ -434,7 +434,7 @@ def hypothesis_tests(results_run: list, model_class, n_lags_future_range: range,
     return output
 
 
-def percentual_lower_mape_on_set(results_count):
+def plot_percentual_lower_mape_on_set(results_count):
     """
     Plot the percentage of times ARP(r,p) outperforms AR(2r) on both
     training and test sets as a function of future lag (p).
